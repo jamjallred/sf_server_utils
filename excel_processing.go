@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,18 +14,21 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-const (
-	mapFilePath      = "assets/airport_code_map.gob"
-	templateFilePath = "assets/nationwide_template.xlsx"
-	templateCopyPath = "assets/nationwide_template_copy.xlsx"
-)
-
 type CityState struct {
 	City  string
 	State string
 }
 
-func Generate(filePath, savePath string) error {
+func Generate(xlsxPath, savePath string) error {
+
+	//create absolute filepaths
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal("$HOME environment variable error: ", err)
+	}
+	mapFilePath := filepath.Join(home, "workspace", "github.com", "jamjallred", "sf_server_utils", "assets", "airport_code_map.gob")
+	templateFilePath := filepath.Join(home, "workspace", "github.com", "jamjallred", "sf_server_utils", "assets", "nationwide_template.xlsx")
+	templateCopyPath := filepath.Join(home, "workspace", "github.com", "jamjallred", "sf_server_utils", "assets", "nationwide_template_copy.xlsx")
 
 	// load airport map file
 	if _, err := os.Stat(mapFilePath); err != nil {
@@ -58,7 +62,13 @@ func Generate(filePath, savePath string) error {
 	}
 	defer dst.Close()
 
-	src, err := excelize.OpenFile(filePath)
+	fmt.Println("made it here") // TESTING LINE ``````````````````````````````````
+
+	if _, err := os.Stat(xlsxPath); err != nil {
+		log.Fatal(err)
+	}
+
+	src, err := excelize.OpenFile(xlsxPath)
 	if err != nil {
 		fmt.Println("error opening file: ", err)
 		return err
