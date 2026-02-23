@@ -1,6 +1,7 @@
 package excelutils
 
 import (
+	"encoding/csv"
 	"encoding/gob"
 	"fmt"
 	"io"
@@ -17,6 +18,12 @@ import (
 type CityState struct {
 	City  string
 	State string
+}
+
+type RentalDistrictZone struct {
+	District string
+	Rental   string
+	Zone     string
 }
 
 func Generate(xlsxPath, savePath string) error {
@@ -90,6 +97,9 @@ func generateSheet(dst, src *excelize.File, airport_code_map map[string]CityStat
 	dst.SetCellValue("Sheet1", "G1", "Drive")                    // rename "Body Type" to "Drive"
 	colIndices := []int{5, 9, 10, 11, 12, 18, 8, 17, 13, 20, 19} // column order from source sheet
 
+	// Widen MSRP and Price Columns to avoid ###### overflow nonsense
+	src.SetColWidth("Sheet1", "T", "U", 100)
+
 	srcRows, err := src.GetRows("Sheet1")
 	if err != nil {
 		fmt.Println(err)
@@ -101,9 +111,22 @@ func generateSheet(dst, src *excelize.File, airport_code_map map[string]CityStat
 
 	fmt.Println("Generating sheet...")
 
+	vin_list := make(map[string]struct{}) // to check for vin uniqueness
+	var new_codes [][]string              // new codes to add to airport_code_map
+	// saved to new csv file "airport_codes_to_update.csv"
+
 	for i, row := range srcRows[3:] { // skipping date, empty line, header rows
-		val, ok := airport_code_map[row[colIndices[0]]]
-		if !ok {
+
+		// check for vin uniqueness
+		if _, ok := vin_list[row[8]]; ok {
+			continue // This is a dupe in the sheet, skip over it
+		} else {
+			vin_list[row[8]] = struct{}{} // This is a new vin, add it to the list and process it
+		}
+
+		val, ok := airport_code_map[row[colIndices[0]]] // airport_code_map is [string]CityState
+		if !ok {                                        // code, rental desc, district desc, rental zone desc
+			new_codes = append(new_codes, []string{row[5], row[4], row[3], row[2]})
 			adjust += 1
 			continue
 		}
@@ -133,6 +156,12 @@ func generateSheet(dst, src *excelize.File, airport_code_map map[string]CityStat
 			dst.SetCellValue("Sheet1", fmt.Sprintf("L%v", rowNum), "n/a")
 		}
 
+	}
+
+	// save new_codes by appending to the end of a csv file
+	updatePath := "./assets/airport_codes_to_update.csv"
+	if err := save_new_codes(new_codes, updatePath); err != nil {
+		return err
 	}
 
 	//sort row data by State, City, Yr, Make, then Model
@@ -292,5 +321,38 @@ func copyTemplate(templatePath, copyPath string) error {
 	}
 
 	return nil
+
+}
+
+func save_new_codes(new_codes [][]string, filePath string) error {
+
+	isNew := false
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		isNew = true
+	}
+
+	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	// if new, write header line
+	header := []string{"Airport Code", "Rental Desc", "District Desc", "Rental Zone Desc"}
+	if isNew {
+		if err := w.Write(header); err != nil {
+			return err
+		}
+	}
+
+	err = w.WriteAll(new_codes)
+	if err != nil {
+		return err
+	}
+
+	return w.Error()
 
 }
