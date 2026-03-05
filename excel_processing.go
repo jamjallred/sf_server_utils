@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -38,8 +39,13 @@ func Generate(xlsxPath, savePath string) error {
 	templateCopyPath := filepath.Join(home, "workspace", "github.com", "jamjallred", "sf_server_utils", "assets", "nationwide_template_copy.xlsx")
 
 	// load airport map file
-	if _, err := os.Stat(mapFilePath); err != nil {
+	fileInfo, err := os.Stat(mapFilePath)
+	if err != nil {
 		fmt.Println("No map found. Creating airport map...")
+		createAirportMap()
+	}
+
+	if time.Since(fileInfo.ModTime()) > 24*time.Hour { // if the map is old, reload it for new info
 		createAirportMap()
 	}
 
@@ -114,6 +120,7 @@ func generateSheet(dst, src *excelize.File, airport_code_map map[string]CityStat
 	vin_list := make(map[string]struct{}) // to check for vin uniqueness
 	var new_codes [][]string              // new codes to add to airport_code_map
 	// saved to new csv file "airport_codes_to_update.csv"
+	new_code_tracker := make(map[string]struct{})
 
 	for i, row := range srcRows[3:] { // skipping date, empty line, header rows
 
@@ -125,12 +132,16 @@ func generateSheet(dst, src *excelize.File, airport_code_map map[string]CityStat
 		}
 
 		val, ok := airport_code_map[row[colIndices[0]]] // airport_code_map is [string]CityState
-		if !ok {                                        // code, rental desc, district desc, rental zone desc
-			new_codes = append(new_codes, []string{row[5], row[4], row[3], row[2]})
+		if !ok {
+			if _, ok := new_code_tracker[row[5]]; !ok {
+				new_code_tracker[row[colIndices[0]]] = struct{}{}
+				new_codes = append(new_codes, []string{row[5], row[4], row[3], row[2]})
+				// code, rental desc, district desc, rental zone desc
+			}
 			adjust += 1
 			continue
 		}
-		rowData := make([]interface{}, 0, len(colIndices))
+		rowData := make([]any, 0, len(colIndices))
 		rowData = append(rowData, val.State, val.City)
 
 		for _, colIdx := range colIndices[1:] {
@@ -251,14 +262,16 @@ func generateSheet(dst, src *excelize.File, airport_code_map map[string]CityStat
 
 func createAirportMap() error {
 
-	f, err := excelize.OpenFile("assets/Airport_Codes.xlsx")
+	log.Println("Updating airport codes...")
+
+	f, err := excelize.OpenFile("./assets/Airport_Codes.xlsx")
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 	defer f.Close()
 
-	mapfile, err := os.Create("assets/airport_code_map.gob")
+	mapfile, err := os.Create("./assets/airport_code_map.gob")
 	if err != nil {
 		fmt.Println("error creating map file:", err)
 		return err
