@@ -42,11 +42,12 @@ func Generate(xlsxPath, savePath string) error {
 	fileInfo, err := os.Stat(mapFilePath)
 	if err != nil {
 		fmt.Println("No map found. Creating airport map...")
-		createAirportMap()
+		CreateAirportMap()
 	}
 
-	if time.Since(fileInfo.ModTime()) > 24*time.Hour { // if the map is old, reload it for new info
-		createAirportMap()
+	if time.Since(fileInfo.ModTime()) > 24*time.Hour || true { // if the map is old, reload it for new info
+		log.Printf("Airport map is old - generating new map at %v", mapFilePath)
+		CreateAirportMap()
 	}
 
 	airport_code_map := make(map[string]CityState)
@@ -260,18 +261,26 @@ func generateSheet(dst, src *excelize.File, airport_code_map map[string]CityStat
 
 }
 
-func createAirportMap() error {
+func CreateAirportMap() error {
 
-	log.Println("Updating airport codes...")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal("$HOME environment variable error: ", err)
+	}
 
-	f, err := excelize.OpenFile("./assets/Airport_Codes.xlsx")
+	airportCodePath := filepath.Join(home, "workspace", "github.com", "jamjallred", "sf_server_utils", "assets", "Airport_Codes.xlsx")
+
+	log.Printf("Updating airport codes using list at: %v", airportCodePath)
+
+	f, err := excelize.OpenFile(airportCodePath)
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 	defer f.Close()
 
-	mapfile, err := os.Create("./assets/airport_code_map.gob")
+	mapFilePath := filepath.Join(home, "workspace", "github.com", "jamjallred", "sf_server_utils", "assets", "airport_code_map.gob")
+	mapfile, err := os.Create(mapFilePath)
 	if err != nil {
 		fmt.Println("error creating map file:", err)
 		return err
