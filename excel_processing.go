@@ -133,7 +133,7 @@ func generateSheet(dst, src *excelize.File, airport_code_map map[string]CityStat
 		}
 
 		val, ok := airport_code_map[row[colIndices[0]]] // airport_code_map is [string]CityState
-		if !ok {
+		if !ok {                                        // if airport code not in airport_code_map
 			if _, ok := new_code_tracker[row[5]]; !ok {
 				new_code_tracker[row[colIndices[0]]] = struct{}{}
 				new_codes = append(new_codes, []string{row[5], row[4], row[3], row[2]})
@@ -347,6 +347,8 @@ func copyTemplate(templatePath, copyPath string) error {
 }
 
 func save_new_codes(new_codes [][]string, filePath string) error {
+
+	log.Printf("saving new codes to %s", filePath)
 
 	isNew := false
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
