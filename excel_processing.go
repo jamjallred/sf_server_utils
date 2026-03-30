@@ -171,7 +171,11 @@ func generateSheet(dst, src *excelize.File, airport_code_map map[string]CityStat
 	}
 
 	// save new_codes by appending to the end of a csv file
-	updatePath := "./assets/airport_codes_to_update.csv"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal("$HOME environment variable error: ", err)
+	}
+	updatePath := filepath.Join(home, "workspace", "github.com", "jamjallred", "sf_server_utils", "assets", "airport_codes_to_update.csv")
 	if err := save_new_codes(new_codes, updatePath); err != nil {
 		return err
 	}
@@ -348,7 +352,10 @@ func copyTemplate(templatePath, copyPath string) error {
 
 func save_new_codes(new_codes [][]string, filePath string) error {
 
-	log.Printf("saving new codes to %s", filePath)
+	log.Printf("saving %v new codes to %s", len(new_codes), filePath)
+	for _, val := range new_codes {
+		fmt.Println(val)
+	}
 
 	isNew := false
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
