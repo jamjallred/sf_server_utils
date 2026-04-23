@@ -13,22 +13,16 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-type dbqGrounded interface {
-	CheckAuctionExists(ctx context.Context, arg CheckAuctionExistsParams) (bool, error)
-	GetAuction(ctx context.Context, arg GetAuctionParams) (string, error)
+type AuctionInfo struct {
+	AuctionName string
 }
 
-type CheckAuctionExistsParams struct {
-	StateCode string
-	City      string
+type AuctionProvider interface {
+	CheckAuctionExists(ctx context.Context, city, state string) (bool, error)
+	GetAuction(ctx context.Context, city, state string) (AuctionInfo, error)
 }
 
-type GetAuctionParams struct {
-	StateCode string
-	City      string
-}
-
-func GenerateGrounded(csvRecords [][]string, savePath string, ctx context.Context, q dbqGrounded) error {
+func GenerateGrounded(csvRecords [][]string, savePath string, ctx context.Context, cfg AuctionProvider) error {
 
 	//create absolute filepaths
 	home, err := os.UserHomeDir()
@@ -53,7 +47,7 @@ func GenerateGrounded(csvRecords [][]string, savePath string, ctx context.Contex
 
 	fmt.Println("made it here") // TESTING LINE ``````````````````````````````````
 
-	if err := generateGroundedSheet(dst, csvRecords, savePath); err != nil {
+	if err := generateGroundedSheet(dst, csvRecords, savePath, ctx, cfg); err != nil {
 		fmt.Println("error generating sheet: ", err)
 		return err
 	}
@@ -62,7 +56,7 @@ func GenerateGrounded(csvRecords [][]string, savePath string, ctx context.Contex
 
 }
 
-func generateGroundedSheet(dst *excelize.File, csv [][]string, savePath string) error {
+func generateGroundedSheet(dst *excelize.File, csv [][]string, savePath string, ctx context.Context, cfg AuctionProvider) error {
 
 	// newHeaders := []string{"State", "City", "Year", "Make", "Model", "Trim", "Drivetrain", "VIN", "Mileage", "Color", "But It Now Price", "Vehicle Link"}
 	//dst.SetCellValue(sheetName, "G1", "Drive")                    // rename "Body Type" to "Drive"
@@ -75,6 +69,22 @@ func generateGroundedSheet(dst *excelize.File, csv [][]string, savePath string) 
 	for i, row := range csv[1:] { // skipping header row
 
 		rowData := make([]any, 0, len(colIndices))
+		state := row[11]
+		city := row[10]
+
+		auction_exists, err := cfg.CheckAuctionExists(ctx, city, state)
+		if err != nil {
+			log.Printf("Error accessing database table city_auction_map: %v", err)
+			auction_exists = false
+		}
+
+		if auction_exists {
+			auction, err := cfg.GetAuction(ctx, city, state)
+			if err != nil {
+				log.Printf("Error accessing database table city_auction_map: %v", err)
+			}
+			row[10] = fmt.Sprintf("%s (%s)", city, auction.AuctionName)
+		}
 
 		for _, colIdx := range colIndices[0:] {
 			rowData = append(rowData, row[colIdx])
