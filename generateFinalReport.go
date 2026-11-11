@@ -2,97 +2,77 @@ package excelutils
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"slices"
 	"strings"
 
 	"github.com/xuri/excelize/v2"
 )
 
-func GenerateFinalReport(csvRecords [][]string, xlsxRecords *excelize.File, savePath string) error {
+const (
+	dibsClaimedCol = 20 // column U: "false" when nobody claimed the car
+	dibsVINCol     = 7  // column H
+	resultsVINCol  = 0
+	resultsRepCol  = 15
+)
 
-	fmt.Println("made it here") // TESTING LINE ``````````````````````````````````
+// GenerateFinalReport edits the dibs workbook in place: it drops unclaimed
+// rows and adds a FINAL column (V) with the rep who closed each car, or
+// "MISSED" when someone outside repNames did. csvRecords are the auction
+// results, header row included.
+func GenerateFinalReport(csvRecords [][]string, dibs *excelize.File, repNames []string) error {
+	sheet := dibs.GetSheetName(0)
 
-	if err := generateFinalReportSheet(xlsxRecords, csvRecords, savePath); err != nil {
-		fmt.Println("error generating sheet: ", err)
-		return err
-	}
-
-	return nil
-
-}
-
-func generateFinalReportSheet(dst *excelize.File, csv [][]string, savePath string) error {
-
-	sheetName := dst.GetSheetName(0)
-	fmt.Println("Generating final results sheet...")
-
-	dstRows, err := dst.GetRows(sheetName)
+	rows, err := dibs.GetRows(sheet)
 	if err != nil {
-		fmt.Printf("error retrieving rows: %v\n", err)
-		return err
+		return fmt.Errorf("reading dibs sheet: %w", err)
 	}
 
-	// delete rows where the final column is false (unclaimed)
-	for i, row := range dstRows {
-		fmt.Println("removing row") // DEBUG LINE, REMOVE LATER
-		if strings.EqualFold(row[20], "false") {
-			dst.RemoveRow(sheetName, i+1)
-		}
-	}
-
-	dst.InsertCols(sheetName, "V", 1) // insert extra column for final
-	// set header cell style for new column
-	styleID, err := dst.GetCellStyle(sheetName, "A1")
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-	err = dst.SetCellStyle(sheetName, "V1", "V1", styleID)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-	err = dst.SetCellValue(sheetName, "V1", "FINAL")
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-	// end new column styles
-
-	dstRows, err = dst.GetRows(sheetName) // repopulate dstRows from culled sheet w/ new column
-	if err != nil {
-		fmt.Printf("error retrieving rows (2): %v\n", err)
-		return err
-	}
-
-	repNames := []string{os.Getenv("EMPLOYEE_1"), os.Getenv("EMPLOYEE_2"), os.Getenv("EMPLOYEE_3"), os.Getenv("EMPLOYEE_4")}
-
-	for i, row := range dstRows {
-		fmt.Println("checking row")
-		rowNum := i + 1
-		for _, csvRow := range csv {
-			if row[7] != csvRow[0] {
-				continue
-			}
-			repName := csvRow[15]
-			if slices.Contains(repNames, csvRow[15]) {
-				dst.SetCellValue(sheetName, fmt.Sprintf("V%v", rowNum), repName)
-			} else {
-				dst.SetCellValue(sheetName, fmt.Sprintf("V%v", rowNum), "MISSED")
+	// Remove unclaimed rows bottom-up so earlier row numbers stay valid.
+	for i := len(rows) - 1; i >= 1; i-- {
+		if strings.EqualFold(strings.TrimSpace(cell(rows[i], dibsClaimedCol)), "false") {
+			if err := dibs.RemoveRow(sheet, i+1); err != nil {
+				return fmt.Errorf("removing row %d: %w", i+1, err)
 			}
 		}
 	}
 
-	//save file
-	fmt.Println("Saving file...")
-	if err := dst.SaveAs(savePath); err != nil {
-		log.Fatalf("error saving file: %v", err)
+	if err := dibs.InsertCols(sheet, "V", 1); err != nil {
+		return fmt.Errorf("inserting FINAL column: %w", err)
+	}
+	if styleID, err := dibs.GetCellStyle(sheet, "A1"); err == nil {
+		_ = dibs.SetCellStyle(sheet, "V1", "V1", styleID)
+	}
+	if err := dibs.SetCellValue(sheet, "V1", "FINAL"); err != nil {
+		return err
 	}
 
-	fmt.Println("Sheet generated successfully.")
+	// VIN -> rep from the results sheet. Later rows win, as before.
+	repByVIN := map[string]string{}
+	for i, rec := range csvRecords {
+		if i == 0 {
+			continue // header
+		}
+		if vin := strings.TrimSpace(cell(rec, resultsVINCol)); vin != "" {
+			repByVIN[vin] = strings.TrimSpace(cell(rec, resultsRepCol))
+		}
+	}
 
+	rows, err = dibs.GetRows(sheet)
+	if err != nil {
+		return fmt.Errorf("re-reading dibs sheet: %w", err)
+	}
+	for i := 1; i < len(rows); i++ {
+		rep, ok := repByVIN[strings.TrimSpace(cell(rows[i], dibsVINCol))]
+		if !ok {
+			continue
+		}
+		value := "MISSED"
+		if rep != "" && slices.Contains(repNames, rep) {
+			value = rep
+		}
+		if err := dibs.SetCellValue(sheet, fmt.Sprintf("V%d", i+1), value); err != nil {
+			return err
+		}
+	}
 	return nil
-
 }
