@@ -8,7 +8,7 @@ Shared spreadsheet utilities (package `excelutils`) used by `sf_car_database`.
 | --- | --- | --- |
 | `GenerateGrounded(ctx, csvRecords, auctions)` | Grounded inventory CSV | Grounded sheet built from `grounded_template.xlsx`, sorted, with auction names added to cities |
 | `GenerateInService(src)` | In-service inventory `.xlsx` export | Nationwide sheet built from `nationwide_template.xlsx`; unknown airport codes are appended to `airport_codes_to_update.csv` |
-| `GenerateFinalReport(csvRecords, dibs, repNames)` | Auction results CSV + dibs `.xlsx` | Dibs workbook with unclaimed rows removed and a `FINAL` column |
+| `GenerateFinalReport(csvRecords, dibs, repNames)` | Auction results CSV + dibs `.xlsx` | Dibs workbook (old dibs sheet or the All Dibs export) with a `FINAL` column: the rep's full name, or `MISSED` when the rep isn't on the team. Unclaimed rows are removed from old dibs sheets. Names match regardless of case, spacing and nicknames (Michael = Mike, see `nicknames`) |
 | `RebuildAirportMap()` / `LoadAirportMap()` | `Airport_Codes.xlsx` | Cached `airport_code_map.gob` |
 
 The generators return an `*excelize.File` and never write to disk on their own. The caller decides whether to stream the file, save it, or both, and must `Close()` it.

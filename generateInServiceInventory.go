@@ -24,6 +24,19 @@ type InServiceResult struct {
 	Rows         int // cars written
 	Duplicates   int // repeated VINs skipped
 	UnknownCodes int // distinct airport codes not in the map (rows skipped)
+
+	// Header is the in-service export's header row, and Unmapped holds every
+	// car left off the sheet because its airport code isn't in the map, as
+	// its full row from the export (same columns as Header).
+	Header   []string
+	Unmapped []UnmappedCar
+}
+
+// UnmappedCar is an in-service row whose airport code isn't in the map.
+type UnmappedCar struct {
+	Code string
+	VIN  string
+	Row  []string
 }
 
 // GenerateInService builds the nationwide sheet from an in-service inventory
@@ -47,7 +60,7 @@ func GenerateInService(src *excelize.File) (*InServiceResult, error) {
 		return nil, fmt.Errorf("opening nationwide template: %w", err)
 	}
 
-	res := &InServiceResult{File: dst}
+	res := &InServiceResult{File: dst, Header: srcRows[inServiceSkip-1]}
 	seenVIN := map[string]bool{}
 	seenCode := map[string]bool{}
 	var newCodes [][]string
@@ -64,6 +77,7 @@ func GenerateInService(src *excelize.File) (*InServiceResult, error) {
 		code := cell(in, inServiceCodeCol)
 		place, ok := codes[code]
 		if !ok {
+			res.Unmapped = append(res.Unmapped, UnmappedCar{Code: code, VIN: vin, Row: in})
 			if !seenCode[code] {
 				seenCode[code] = true
 				newCodes = append(newCodes, []string{code, cell(in, 4), cell(in, 3), cell(in, 2)})
